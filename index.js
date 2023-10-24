@@ -1,9 +1,13 @@
 const express = require('express');
 const app = express();
-
+const axios = require('axios');
 const crypto = require("crypto");
 const bodyParser = require('body-parser');
+const cors = require('cors');
+
+app.use(cors());
 app.use(bodyParser.urlencoded({ extended: false }));
+
 
 const generateSignature = (data, passPhrase = null) => {
     // Create parameter string
@@ -26,81 +30,91 @@ const generateSignature = (data, passPhrase = null) => {
     return crypto.createHash("md5").update(getString).digest("hex");
 };
 
-const myData = [];
-// Merchant details
-myData["merchant_id"] = "10000100";
-myData["merchant_key"] = "46f0cd694581a";
-myData["return_url"] = "http://www.yourdomain.co.za/return_url";
-myData["cancel_url"] = "http://www.yourdomain.co.za/cancel_url";
-myData["notify_url"] = "http://www.yourdomain.co.za/notify_url";
-// Buyer details
-myData["name_first"] = "Simon";
-myData["name_last"] = "Lephoto";
-myData["email_address"] = "test@test.com";
-// Transaction details
-myData["m_payment_id"] = "1234";
-myData["amount"] = "50.00";
-myData["item_name"] = "Order#123";
+// const myData = [];
+// // Merchant details
+// myData["merchant_id"] = "10000100";
+// myData["merchant_key"] = "46f0cd694581a";
+// myData["return_url"] = "http://www.yourdomain.co.za/return_url";
+// myData["cancel_url"] = "http://www.yourdomain.co.za/cancel_url";
+// myData["notify_url"] = "http://www.yourdomain.co.za/notify_url";
+// // Buyer details
+// myData["name_first"] = "Simon";
+// myData["name_last"] = "Lephoto";
+// myData["email_address"] = "test@test.com";
+// // Transaction details
+// myData["m_payment_id"] = "1234";
+// myData["amount"] = "50.00";
+// myData["item_name"] = "Order#123";
 
-// // Generate signature
-// // const myPassphrase = "B31nCh3ck1ng";
-const myPassphrase = "jt7NOE43FZPn";
-myData["signature"] = generateSignature(myData, myPassphrase);
+// // // Generate signature
+// const myPassphrase = "jt7NOE43FZPn";
+// myData["signature"] = generateSignature(myData, myPassphrase);
 
-// let htmlForm = `<form action="https://sandbox.payfast.co.za/eng/process" method="post">`;
-// for (let key in myData) {
-//   if(myData.hasOwnProperty(key)){
-//     value = myData[key];
-//     if (value !== "") {
-//       htmlForm +=`<input name="${key}" type="hidden" value="${value.trim()}" />`;
-//     }
-//   }
-// }
+// app.get('/', function (req, res) {
+//     res.send('Hello World!');
+// });
 
-// htmlForm += '<input type="submit" value="Pay Now" /></form>'; 
+const payfastMerchantId = '10031519';
+const payfastMerchantKey = 'chicm4ug5ts86';
 
-const ITN_Payload = {
-    'm_payment_id': 'SuperUnique1',
-    'pf_payment_id': '1089250',
-    'payment_status': 'COMPLETE',
-    'item_name': 'test+product',
-    'item_description': 'test+description',
-    'amount_gross': 200.00,
-    'amount_fee': -4.60,
-    'amount_net': 195.40,
-    'custom_str1': '',
-    'custom_str2': '',
-    'custom_str3': '',
-    'custom_str4': '',
-    'custom_str5': '',
-    'custom_int1': '',
-    'custom_int2': '',
-    'custom_int3': '',
-    'custom_int4': '',
-    'custom_int5': '',
-    'name_first': '',
-    'name_last': '',
-    'email_address': '',
-    'merchant_id': '10000100',
-    'signature': 'ad8e7685c9522c24365d7ccea8cb3db7'
-};
+const secureKey = 'your_secret_key';
 
-app.get('/', function (req, res) {
-    res.send('Hello World!');
+
+app.post('/payfast/callback', (req, res) => {
+    const postData = req.body;
+    const signature = req.get('pf_signature');
+
+    const data = JSON.stringify(postData);
+    const calculatedSignature = crypto
+        .createHmac('md5', secureKey)
+        .update(data)
+        .digest('hex');
+
+    if (calculatedSignature === signature) {
+        console.log('PayFast callback received and validated');
+        console.log('Subscription data:', postData);
+
+        res.send('OK');
+    } else {
+        console.error('Invalid PayFast callback signature');
+        res.status(400).send('Invalid Signature');
+    }
 });
 
-// Route for handling form submission
+app.post('/subscribe', async (req, res) => {
+
+    const { subscription_type, frequency, cycles } = req.body;
+
+    const subscriptionData = {
+        "merchant_id": "10000100",
+        "merchant_key": "46f0cd694581a",
+        "amount": "100",
+        "item_name": "reading_classes",
+        "subscription_type": "1",
+        "frequency": "3",
+        "cycles": "12",
+    };
+
+    // const signature = generateSignature(payfastMerchantKey)
+
+    // console.log("Client data", signature)
+
+    try {
+        const response = await axios.get(`https://sandbox.payfast.co.za/eng/process`, subscriptionData);
+        res.redirect(response.data);
+    } catch (error) {
+        console.error('Error initiating PayFast subscription:', error);
+        res.status(500).send('Failed to initiate subscription');
+    }
+});
+
+
 app.post('/pay', function (req, res) {
 
     const formData = req.body;
 
-    const myPassphrase = "jt7NOE43FZPn";
-    // formData["signature"] = generateSignature(formData, myPassphrase);
-
-    // Construct the PayFast URL
     const payFastUrl = 'https://sandbox.payfast.co.za/eng/process';
 
-    // Render a page that automatically submits the form to PayFast
     const htmlResponse = `
         <html>
         <body>
@@ -121,24 +135,8 @@ app.post('/pay', function (req, res) {
     res.send(htmlResponse);
 });
 
-app.post('/success', function (req, res) {
+const port = process.env.PORT || 3000
 
-    // Render a page that automatically submits the form to PayFast
-    const htmlResponse = `
-        <html>
-        <body>
-            <p>Thank you for shopping!</p>
-        </body>
-        <script>
-            // Automatically submit the form when the page loads
-            document.forms[0].submit();
-        </script>
-        </html>
-    `;
-
-    res.send(htmlResponse);
-});
-
-app.listen(3000, function () {
+app.listen(port, function () {
     console.log('Example app listening on port 3000!');
 });
